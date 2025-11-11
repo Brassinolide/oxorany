@@ -59,7 +59,7 @@ namespace simple_sha {
         return state;
     }
 
-    static OXORANY_FORCEINLINE constexpr uint64_t fmix64(uint64_t k) noexcept {
+    static consteval uint64_t fmix64(uint64_t k) noexcept {
         k ^= k >> 33;
         k *= 0xff51afd7ed558ccdULL;
         k ^= k >> 33;
@@ -68,7 +68,7 @@ namespace simple_sha {
         return k;
     }
 
-    static OXORANY_FORCEINLINE constexpr uint64_t mix_two(uint64_t a, uint64_t b) noexcept {
+    static consteval uint64_t mix_two(uint64_t a, uint64_t b) noexcept {
         uint64_t h = fmix64(a + 0x9e3779b97f4a7c15ULL);
         h ^= b;
         return fmix64(h);
@@ -97,13 +97,13 @@ namespace simple_sha {
 }
 
 namespace _lxy_oxor_any_ {
-    volatile uint64_t g_x = 0;
-    volatile uint64_t& X() {
+    inline volatile uint64_t g_x = 0;
+    static volatile uint64_t& X() noexcept {
         return g_x;
     }
 
-    volatile uint64_t g_y = 0;
-    volatile uint64_t& Y() {
+    inline uint64_t g_y = 0;
+    static volatile uint64_t& Y() noexcept {
         return g_y;
     }
 
@@ -128,37 +128,31 @@ namespace _lxy_oxor_any_ {
     }
 
     template<typename T, size_t size>
-    static OXORANY_FORCEINLINE constexpr size_t array_size(const T(&)[size]) { return size; }
+    static consteval size_t array_size(const T(&)[size]) noexcept { return size; }
 
     template<typename T>
-    static OXORANY_FORCEINLINE constexpr size_t array_size(T) { return 0; }
+    static consteval size_t array_size(T) noexcept { return 0; }
 
     template<typename T, size_t size>
-    static inline T typeofs(const T(&)[size]);
+    static consteval T typeofs(const T(&)[size]) noexcept;
 
     template<typename T>
-    static inline T typeofs(T);
+    static consteval T typeofs(T) noexcept;
 
-    // TODO: 使用更复杂的加解密算法
+    // TODO: 使用更复杂的加解密算法（流密码？或分组密码流操作模式？）
 
-    template<size_t key>
+    template<uint64_t key>
     static OXORANY_FORCEINLINE constexpr uint8_t encrypt_byte(uint8_t c, size_t i) {
-        return static_cast<uint8_t>(((c + (key * 7)) ^ (i + key)));
-    }
-
-    template<size_t key>
-    static OXORANY_FORCEINLINE constexpr uint8_t decrypt_byte(uint8_t c, size_t i) {
-        //a ^ b == (a + b) - 2 * (a & b)
-        size_t a = c;
-        size_t b = i + key;
-        //size_t a_xor_b = (a + b) - 2 * (a & b);
-        size_t a_xor_b = (a + b) - ((a & b) + (b & a));
-        //size_t a_xor_b = (a + b) - (a & b) - (b & a); 
-        return static_cast<uint8_t>((a_xor_b)-(key * 7));
+        return static_cast<uint8_t>(key ^ c ^ i);
     }
 
     template<uint64_t key>
-    static OXORANY_FORCEINLINE consteval uint64_t limit() noexcept {
+    static OXORANY_FORCEINLINE constexpr uint8_t decrypt_byte(uint8_t c, size_t i) {
+        return static_cast<uint8_t>(key ^ c ^ i);
+    }
+
+    template<uint64_t key>
+    static consteval uint64_t limit() noexcept {
         constexpr uint64_t bcf_value[] = {
             1, 2, 3, 4, 5,
             6, 8, 9, 10, 16,
@@ -170,7 +164,7 @@ namespace _lxy_oxor_any_ {
     }
 
     template<typename return_type, uint64_t key, size_t size>
-    static OXORANY_FORCEINLINE const return_type decrypt(uint8_t(&buffer)[size]) {
+    static OXORANY_FORCEINLINE const return_type decrypt(uint8_t(&buffer)[size]) noexcept {
         volatile uint8_t source;
         volatile uint8_t decrypted; //do not assign initial value
         volatile uint64_t stack_x;
@@ -641,27 +635,27 @@ namespace _lxy_oxor_any_ {
         return reinterpret_cast<return_type>(buffer);
     }
 
-    static consteval size_t align(size_t n, size_t a) noexcept {
-        return (n + a - 1) & ~(a - 1);
-    }
+    template<typename T>
+    concept trivially_copy = std::is_trivially_copyable_v<T> && std::is_standard_layout_v<T>;
 
-    template<typename any_t, size_t ary_size, size_t counter>
+    template<trivially_copy any_t, size_t cchsize, size_t counter>
     class oxor_any {
     public:
         template<size_t... indices>
-        OXORANY_FORCEINLINE constexpr oxor_any(const any_t(&any)[ary_size], std::index_sequence<indices...>) :
+        OXORANY_FORCEINLINE constexpr oxor_any(const any_t(&any)[cchsize], std::index_sequence<indices...>) noexcept :
             buffer_{ encrypt_byte<session_key_>(((uint8_t*)&any)[indices], indices)... } {
         }
 
-        OXORANY_FORCEINLINE const any_t* get() { return decrypt<const any_t*, session_key_>(buffer_); }
+        OXORANY_FORCEINLINE const any_t* get() noexcept { return decrypt<const any_t*, session_key_>(buffer_); }
 
     private:
-        static constexpr uint64_t session_key_ = simple_sha::mix_two(ary_size, simple_sha::mix_two(counter, base_key));
-        
-        uint8_t buffer_[ary_size];
+        static constexpr size_t cbsize_ = cchsize * sizeof(any_t);
+        static constexpr uint64_t session_key_ = simple_sha::mix_two(cbsize_, simple_sha::mix_two(counter, base_key));
+
+        uint8_t buffer_[cbsize_];
     };
 
-    template<typename any_t, size_t counter>
+    template<trivially_copy any_t, size_t counter>
     class oxor_any<any_t, 0, counter> {
     public:
         template<size_t... indices>
@@ -669,12 +663,13 @@ namespace _lxy_oxor_any_ {
             buffer_{ encrypt_byte<session_key_>(reinterpret_cast<uint8_t*>(&any)[indices], indices)... } {
         }
 
-        OXORANY_FORCEINLINE const any_t get() { return *decrypt<const any_t*, session_key_>(buffer_); }
+        OXORANY_FORCEINLINE const any_t get() noexcept { return *decrypt<const any_t*, session_key_>(buffer_); }
 
     private:
-        static constexpr uint64_t session_key_ = simple_sha::mix_two(sizeof(any_t), simple_sha::mix_two(counter, base_key));
-        
-        uint8_t buffer_[sizeof(any_t)];
+        static constexpr size_t cbsize_ = sizeof(any_t);
+        static constexpr uint64_t session_key_ = simple_sha::mix_two(cbsize_, simple_sha::mix_two(counter, base_key));
+
+        uint8_t buffer_[cbsize_];
     };
 }
 

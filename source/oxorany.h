@@ -59,7 +59,7 @@ namespace simple_sha {
         return state;
     }
 
-    static consteval uint64_t fmix64(uint64_t k) noexcept {
+    static OXORANY_FORCEINLINE constexpr uint64_t fmix64(uint64_t k) noexcept {
         k ^= k >> 33;
         k *= 0xff51afd7ed558ccdULL;
         k ^= k >> 33;
@@ -68,7 +68,7 @@ namespace simple_sha {
         return k;
     }
 
-    static consteval uint64_t mix_two(uint64_t a, uint64_t b) noexcept {
+    static OXORANY_FORCEINLINE constexpr uint64_t mix_two(uint64_t a, uint64_t b) noexcept {
         uint64_t h = fmix64(a + 0x9e3779b97f4a7c15ULL);
         h ^= b;
         return fmix64(h);
@@ -143,12 +143,12 @@ namespace _lxy_oxor_any_ {
 
     template<uint64_t key>
     static OXORANY_FORCEINLINE constexpr uint8_t encrypt_byte(uint8_t c, size_t i) {
-        return static_cast<uint8_t>(key ^ c ^ i);
+        return static_cast<uint8_t>(simple_sha::mix_two(key, i) ^ c);
     }
 
     template<uint64_t key>
     static OXORANY_FORCEINLINE constexpr uint8_t decrypt_byte(uint8_t c, size_t i) {
-        return static_cast<uint8_t>(key ^ c ^ i);
+        return static_cast<uint8_t>(simple_sha::mix_two(key, i) ^ c);
     }
 
     template<uint64_t key>
